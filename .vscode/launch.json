@@ -7,35 +7,15 @@
         {
             "type": "aws-sam",
             "request": "direct-invoke",
-            "name": "sam-kendra-rag:HelloWorldFunction (python3.10)",
+            "name": "sam-kendra-rag:ReviewReadableCodeFunction (python3.10)",
             "invokeTarget": {
                 "target": "template",
                 "templatePath": "${workspaceFolder}/template.yaml",
-                "logicalId": "HelloWorldFunction"
+                "logicalId": "ReviewReadableCodeFunction"
             },
             "lambda": {
                 "payload": {},
                 "environmentVariables": {}
-            }
-        },
-        {
-            "type": "aws-sam",
-            "request": "direct-invoke",
-            "name": "API sam-kendra-rag:HelloWorldFunction (python3.10)",
-            "invokeTarget": {
-                "target": "api",
-                "templatePath": "${workspaceFolder}/template.yaml",
-                "logicalId": "HelloWorldFunction"
-            },
-            "api": {
-                "path": "/hello",
-                "httpMethod": "get",
-                "payload": {
-                    "json": {}
-                }
-            },
-            "lambda": {
-                "runtime": "python3.10"
             }
         }
     ]
