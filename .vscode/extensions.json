@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "ms-python.black-formatter",
+        "aws-scripting-guy.cform",
+        "ms-python.isort",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "amazonwebservices.aws-toolkit-vscode"
+    ]
+}
