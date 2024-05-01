@@ -27,3 +27,13 @@ Resources:
         - x86_64
       Layers:
         - !Ref LayerModules
+
+  # モジュールレイヤー
+  LayerModules:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: src/layer_modules/
+      CompatibleRuntimes:
+        - python3.10
+    Metadata:
+      BuildMethod: python3.10
