@@ -5,6 +5,11 @@ Description: >
 
   Sample SAM Template for sam-slack-review-rag
 
+Parameters:
+  # データソース格納バケット名
+  DataSourceBucketName:
+    Type: String
+
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
@@ -23,8 +28,14 @@ Resources:
       CodeUri: src/
       Handler: app.lambda_handler
       Runtime: python3.10
+      Role: !GetAtt LambdaIAMRole.Arn
       Architectures:
         - x86_64
+      FunctionUrlConfig: # Lambda関数URLを設定する
+        AuthType: NONE # 認証なし
+      Environment:
+        Variables:
+          KENDRA_INDEX_ID: !Ref KendraIndex
       Layers:
         - !Ref LayerModules
 
@@ -37,3 +48,182 @@ Resources:
         - python3.10
     Metadata:
       BuildMethod: python3.10
+
+  # IAMロール（Lambda実行用）
+  LambdaIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      RoleName: "review-readable-code-function-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "lambda.amazonaws.com"
+            Action: "sts:AssumeRole"
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - "arn:aws:iam::aws:policy/AmazonKendraFullAccess"
+        - !Ref LambdaIAMManagedPolicy
+
+  # IAMポリシー（Lambda実行用）
+  LambdaIAMManagedPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      ManagedPolicyName: "review-readable-code-function-policy"
+      Path: "/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # 東京リージョンにある Bedrockモデル を使用するためのアクセスポリシー
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource:
+              - "arn:aws:bedrock:ap-northeast-1::foundation-model/anthropic.claude-v2:1"
+
+  # ------------------------------------------------------------#
+  # S3（データソース格納バケット）
+  # ------------------------------------------------------------#
+
+  # S3バケット
+  DataSourceS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref DataSourceBucketName
+      NotificationConfiguration: # S3イベント通知設定
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true # EventBridge通知を有効化
+      AccessControl: Private # アクセス権限設定
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True # 未来にパブリックなACLに変更することを阻止する
+        BlockPublicPolicy: True # 未来にパブリックなポリシーに変更することを阻止する
+        IgnorePublicAcls: True # 現在のパブリックなACLを無効化する
+        RestrictPublicBuckets: True # 現在のパブリックなポリシーを無効化する
+
+  # ------------------------------------------------------------#
+  # Kendra
+  # ------------------------------------------------------------#
+
+  # Kendraインデックス ----------------------------------------#
+
+  # Kendraインデックス
+  KendraIndex:
+    Type: "AWS::Kendra::Index"
+    Properties:
+      Name: "readable-code-index"
+      Edition: "DEVELOPER_EDITION"
+      RoleArn: !GetAtt KendraIndexIAMRole.Arn
+
+  # IAMロール（Kendraインデックス用）
+  KendraIndexIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      RoleName: !Sub "AmazonKendra-${AWS::Region}-readable-code-index-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "kendra.amazonaws.com"
+            Action: "sts:AssumeRole"
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - !Ref KendraIndexIAMManagedPolicy
+      Description: !Sub "AmazonKendra-${AWS::Region}-readable-code-index-role"
+
+  # IAMポリシー（Kendraインデックス用）
+  KendraIndexIAMManagedPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      Path: "/service-role/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "cloudwatch:PutMetricData"
+            Resource: "*"
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: "AWS/Kendra"
+          - Effect: "Allow"
+            Action:
+              - "logs:DescribeLogGroups"
+            Resource: "*"
+          - Effect: "Allow"
+            Action:
+              - "logs:CreateLogGroup"
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kendra/*"
+          - Effect: "Allow"
+            Action:
+              - "logs:DescribeLogStreams"
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/kendra/*:log-stream:*"
+
+  # Kendraデータソース ----------------------------------------#
+
+  # Kendraデータソース
+  KendraDataSource:
+    Type: "AWS::Kendra::DataSource"
+    Properties:
+      DataSourceConfiguration:
+        S3Configuration:
+          BucketName: !Ref DataSourceS3Bucket
+      # Description: ""
+      IndexId: !GetAtt KendraIndex.Id
+      LanguageCode: "ja"
+      Name: "readable-code-data-source"
+      RoleArn: !GetAtt KendraDataSourceIAMRole.Arn
+      Schedule: "" # スケジュールを設定しないことでオンデマンド更新となる
+      Type: "S3"
+
+  # IAMロール（Kendraデータソース用）
+  KendraDataSourceIAMRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      Path: "/service-role/"
+      RoleName: "AmazonKendra-readable-code-data-source-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "kendra.amazonaws.com"
+            Action: "sts:AssumeRole"
+      MaxSessionDuration: 3600
+      ManagedPolicyArns:
+        - !Ref KendraDataSourceIAMManagedPolicy
+      Description: "AmazonKendra-readable-code-data-source-role"
+
+  # IAMポリシー（Kendraデータソース用）
+  KendraDataSourceIAMManagedPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      Path: "/service-role/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "s3:GetObject"
+            Resource:
+              - !Sub "arn:aws:s3:::${DataSourceS3Bucket}/*"
+          - Effect: "Allow"
+            Action:
+              - "s3:ListBucket"
+            Resource:
+              - !Sub "arn:aws:s3:::${DataSourceS3Bucket}"
+          - Effect: "Allow"
+            Action:
+              - "kendra:BatchPutDocument"
+              - "kendra:BatchDeleteDocument"
+            Resource: !Sub
+              - "arn:aws:kendra:${AWS::Region}:${AWS::AccountId}:index/${IndexId}"
+              - IndexId: !GetAtt KendraIndex.Id
