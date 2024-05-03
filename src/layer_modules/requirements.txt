@@ -1,3 +1,4 @@
 langchain==0.1.16
 langchain-community==0.0.36
 langchain_aws==0.1.2
+slack_bolt==1.18.1

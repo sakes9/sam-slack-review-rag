@@ -35,7 +35,9 @@ Resources:
         AuthType: NONE # 認証なし
       Environment:
         Variables:
-          KENDRA_INDEX_ID: !Ref KendraIndex
+          KENDRA_INDEX_ID: !Ref KendraIndex # KendraインデックスID
+          SLACK_BOT_TOKEN: "" # Slack Bot Token
+          SLACK_SIGNING_SECRET: "" # Slack Signing Secret
       Layers:
         - !Ref LayerModules
 
